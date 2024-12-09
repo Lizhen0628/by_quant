@@ -29,4 +29,8 @@ pip install -r requirements.txt
 
 ### 2.2 数据处理
 
+```python
+python data_init.py
+```
+
 
