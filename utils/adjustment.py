@@ -4,8 +4,9 @@ import pandas as pd
 
 def process_forward(symbol_pd, adjustment_pd):
     """前复权"""
-    symbol_pd.set_index('datetime',inplace=True)
-    adjustment_pd.set_index('datetime', inplace=True)
+    symbol_pd = symbol_pd.set_index('timestamp')
+    adjustment_pd = adjustment_pd.set_index('timestamp')
+
     def calc_front(v, d):
         return round(
             (v - d['interest'] + d['allotPrice'] * d['allotNum'])
@@ -31,7 +32,6 @@ def process_forward(symbol_pd, adjustment_pd):
 
         datas.append({
             **q,
-            "datetime":q.name,
             "open":open,
             "high":high,
             "low":low,
@@ -41,8 +41,8 @@ def process_forward(symbol_pd, adjustment_pd):
 
 def process_backward(symbol_pd, adjustment_pd):
     """后复权"""
-    symbol_pd.set_index('datetime',inplace=True)
-    adjustment_pd.set_index('datetime', inplace=True)
+    symbol_pd = symbol_pd.set_index('timestamp')
+    adjustment_pd = adjustment_pd.set_index('timestamp')
     def calc_front(v, d):
         return round(
             (v * (1 + d['stockGift'] + d['stockBonus'] + d['allotNum'])
@@ -67,7 +67,6 @@ def process_backward(symbol_pd, adjustment_pd):
             close = calc_front(close, d)
         datas.append({
             **q,
-            "datetime":q.name,
             "open":open,
             "high":high,
             "low":low,
