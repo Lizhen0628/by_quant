@@ -3,4 +3,4 @@ from .env import DAILY_DIR, DATA_DIR, MINUTE_DIR, LOCAL_ADJUSTMENT_FILE,LOCAL_DA
 from .adjustment import process_backward, process_forward
 from .data import get_daily_data,get_forward_data
 
-
+from .index import macd

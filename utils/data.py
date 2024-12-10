@@ -118,6 +118,7 @@ def get_daily_data(symbol):
     symbol = correct_symbol(symbol, local_adjustment_pd)
     local_symbol_daily_pd = local_daily_pd[local_daily_pd['symbol'] == symbol]
     local_symbol_adjustment_pd = local_adjustment_pd[local_adjustment_pd['symbol'] == symbol]
+    
     if SECRET == "" or SECRET == "your_secret_key_here":
         return local_symbol_daily_pd, local_symbol_adjustment_pd
 
@@ -162,5 +163,7 @@ def get_forward_data(symbol:str):
     """获取前复权后到数据"""
     daily_pd, adjustment_pd = get_daily_data(symbol)
     forward_pd = process_forward(daily_pd, adjustment_pd)
+    if 'preClose' in forward_pd.columns:
+        forward_pd.drop(columns='preClose', inplace=True)
     forward_pd.sort_values(by="datetime",inplace=True)
     return forward_pd
