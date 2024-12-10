@@ -51,7 +51,7 @@ pip install -r requirements.txt
     ```python
     from utils import get_daily_data
 
-    data_pd = get_daily_data("002385.SZ")
+    daily_pd, adjustment_pd  = get_daily_data('002385')
     ```
 2. 获取前复权数据
     ```python
@@ -60,10 +60,8 @@ pip install -r requirements.txt
     data_pd = get_forward_data("002385.SZ")
     ```
 
-3. 计算指标
+
+## 3. 计算指标
 
 
-4. 编写策略
-
-
-5. 回测
+## 4. 编写策略及回测

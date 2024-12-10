@@ -99,6 +99,11 @@ def request_market_adjustment_online(json_data):
         return pd.DataFrame(datas)
     return response
 
+def correct_symbol(symbol, data_pd):
+    if '.' in symbol:
+        return symbol
+    
+    return data_pd[data_pd['symbol'].str.contains(symbol)]['symbol'].unique()[0]
 
 
 def get_daily_data(symbol):
@@ -110,7 +115,7 @@ def get_daily_data(symbol):
     # 1. 获取本地日K数据 和 除权数据
     local_daily_pd = get_local_daily_data()
     local_adjustment_pd = get_local_adjustment_data()
-
+    symbol = correct_symbol(symbol, local_adjustment_pd)
     local_symbol_daily_pd = local_daily_pd[local_daily_pd['symbol'] == symbol]
     local_symbol_adjustment_pd = local_adjustment_pd[local_adjustment_pd['symbol'] == symbol]
     if SECRET == "" or SECRET == "your_secret_key_here":
