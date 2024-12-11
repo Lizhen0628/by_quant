@@ -53,15 +53,21 @@ pip install -r requirements.txt
 
 1. 获取原始日K数据
     ```python
-    from utils import get_daily_data
+    from utils import get_daily_data,get_local_daily_data,get_local_adjustment_data
 
-    daily_pd, adjustment_pd  = get_daily_data('002385')
+    local_daily_pd = get_local_daily_data()
+    local_adjustment_pd = get_local_adjustment_data()
+    data_pd, adjustment_pd = get_daily_data("002385", local_daily_pd, local_adjustment_pd)
+
+    data_pd.tail(3)
     ```
 2. 获取前复权数据
     ```python
-    from utils import get_forward_data
+    from utils import get_forward_data,get_local_daily_data,get_local_adjustment_data
 
-    data_pd = get_forward_data("002385.SZ")
+    local_daily_pd = get_local_daily_data()
+    local_adjustment_pd = get_local_adjustment_data()
+    data_pd = get_forward_data("002385", local_daily_pd, local_adjustment_pd)
 
     data_pd.tail()
     ```
@@ -70,21 +76,76 @@ pip install -r requirements.txt
 
 
 ## 3. 计算指标
-### 3.1 安装股票指标计算库
+计算指标放在`indicator`目录下
+
 示例：计算macd
 ```python
-from utils import get_forward_data, macd
-data_pd = get_forward_data("002385")
+    from utils import get_forward_data,get_local_daily_data,get_local_adjustment_data
+    from indicator import macd
+    
+    local_daily_pd = get_local_daily_data()
+    local_adjustment_pd = get_local_adjustment_data()
+    data_pd = get_forward_data("002385", local_daily_pd, local_adjustment_pd)
 
-# 删除停牌数据
-data_pd = data_pd[data_pd['suspendFlag'] == 0]
-data_pd.drop(columns='suspendFlag', inplace=True)
+    # 删除停牌数据
+    data_pd = data_pd[data_pd['suspendFlag'] == 0]
+    data_pd.drop(columns='suspendFlag', inplace=True)
 
-data_pd = macd(data_pd)
+    data_pd = macd(data_pd)
 
-data_pd.head()
+    data_pd.head()
 ```
  > 同通信达股票软件数据对比，确认一致。
 
 
 ## 4. 编写策略及回测
+```python
+    from utils import get_forward_data,get_local_daily_data,get_local_adjustment_data
+    from indicator import macd,rsi
+    import pandas as pd
+    import pybroker
+    from pybroker import Strategy,StrategyConfig
+    import matplotlib.pyplot as plt
+
+    local_daily_pd = get_local_daily_data()
+    local_adjustment_pd = get_local_adjustment_data()
+    data_pd = get_forward_data("002385", local_daily_pd, local_adjustment_pd)
+
+    # 删除停牌数据
+    data_pd = data_pd[data_pd['suspendFlag'] == 0]
+    data_pd.drop(columns='suspendFlag', inplace=True)
+
+    data_pd = macd(data_pd)
+    data_pd = rsi(data_pd)
+
+    data_pd['date'] = pd.to_datetime(data_pd['datetime'])
+
+    # 注册指标到pybroker
+    pybroker.register_columns('rsi')
+
+    # 初始化资金:50000元
+    config = StrategyConfig(initial_cash=50000)
+
+    strategy = Strategy(data_pd, '4/1/2021', '09/12/2024',config=config)
+
+
+    # 定义策略
+    def buy_low_sell_high_rsi(ctx):
+        pos = ctx.long_pos()
+        if not pos and ctx.rsi[-1] < 30:
+            ctx.buy_shares = 100
+        elif pos and ctx.rsi[-1] > 70:
+            ctx.sell_shares = pos.shares
+
+    # 注册策略到pybroker
+    strategy.add_execution(buy_low_sell_high_rsi, ['002385.SZ'])
+
+
+    # 回测
+    result = strategy.backtest()
+
+    # 绘制收益曲线
+    chart = plt.subplot2grid((3, 2), (0, 0), rowspan=3, colspan=2)
+    chart.plot(result.portfolio.index, result.portfolio['market_value'])
+
+```

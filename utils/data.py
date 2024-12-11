@@ -106,16 +106,18 @@ def correct_symbol(symbol, data_pd):
     return data_pd[data_pd['symbol'].str.contains(symbol)]['symbol'].unique()[0]
 
 
-def get_daily_data(symbol):
+def get_daily_data(symbol:str,local_daily_pd:DataFrame,local_adjustment_pd:DataFrame):
     """ 自动获取本地和在线数据 
         @param symbol: 股票代码【002385.SZ】
+        @param local_daily_pd: 本地日K数据
+        @param local_adjustment_pd: 本地除权数据
         @return (日线数据、 除权数据)
     """
 
     # 1. 获取本地日K数据 和 除权数据
-    local_daily_pd = get_local_daily_data()
-    local_adjustment_pd = get_local_adjustment_data()
-    symbol = correct_symbol(symbol, local_adjustment_pd)
+    # local_daily_pd = get_local_daily_data()
+    # local_adjustment_pd = get_local_adjustment_data()
+    symbol = correct_symbol(symbol, local_daily_pd)
     local_symbol_daily_pd = local_daily_pd[local_daily_pd['symbol'] == symbol]
     local_symbol_adjustment_pd = local_adjustment_pd[local_adjustment_pd['symbol'] == symbol]
     
@@ -159,9 +161,11 @@ def get_daily_data(symbol):
     return pd.concat([local_symbol_daily_pd, online_symbol_daily_pd]), pd.concat([local_symbol_adjustment_pd, online_symbol_adjustment_pd])
 
 
-def get_forward_data(symbol:str):
+def get_forward_data(symbol:str,local_daily_pd:DataFrame,local_adjustment_pd:DataFrame):
     """获取前复权后到数据"""
-    daily_pd, adjustment_pd = get_daily_data(symbol)
+    # 补全在线数据
+    daily_pd, adjustment_pd = get_daily_data(symbol,local_daily_pd,local_adjustment_pd)
+    # 计算前复权价格
     forward_pd = process_forward(daily_pd, adjustment_pd)
     if 'preClose' in forward_pd.columns:
         forward_pd.drop(columns='preClose', inplace=True)
