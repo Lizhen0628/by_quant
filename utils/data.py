@@ -2,6 +2,8 @@
 import os
 import requests
 import pandas as pd
+import pytz
+import akshare
 from tqdm import tqdm
 from typing import Dict
 from datetime import date,datetime,timedelta
@@ -44,6 +46,39 @@ def get_local_adjustment_data(data_file = LOCAL_ADJUSTMENT_FILE):
     return pd.read_csv(LOCAL_ADJUSTMENT_FILE)
 
 
+def get_data_from_ak(symbol,name, max_timestamp):
+    """从ak上获取最新数据"""
+    code = symbol
+    if '.' in symbol:
+        code = symbol.split('.')[0]
+    # 指定时区为东八区（Asia/Shanghai）
+    timezone = pytz.timezone('Asia/Shanghai')
+    start_date = date.fromtimestamp(max_timestamp / 1000 )
+    start_date = start_date.strftime('%Y%m%d')
+
+    # 当日17点之前刷数
+    if datetime.now().hour > 15 and datetime.now().minute > 5:
+        end_date = f"{date.today().strftime("%Y%m%d")}"
+    else:
+        end_date = f"{(date.today() - timedelta(1)).strftime("%Y%m%d")}"
+
+    data_pd = akshare.stock_zh_a_hist(symbol=code, period='daily',start_date=start_date, end_date=end_date,adjust="")
+    if data_pd is None or len(data_pd) == 0:
+        return
+    data_pd.rename(columns={"日期":"datetime", "股票代码":"symbol", "开盘":"open", "收盘":"close","最高":"high","最低":"low","成交量":"volume","成交额":"amount"},inplace=True)
+
+    data_pd["symbol"] = symbol
+    data_pd["name"] = name
+    data_pd["suspendFlag"] = 0
+    data_pd['amount'] = data_pd['amount'].apply(float)
+    data_pd['timestamp'] = data_pd['datetime'].apply(lambda x : int(pd.Timestamp(x,tz=timezone).timestamp()) * 1000)
+    data_pd['datetime'] = data_pd['datetime'].apply(lambda x : x.strftime('%Y-%m-%d %H:%M:%S'))
+
+    data_pd['preClose'] = data_pd['close'].shift(1)
+    data_pd.dropna(axis=0,inplace=True)
+    data_pd = data_pd[['timestamp', 'datetime', 'symbol', 'name', 'open', 'high', 'low','close', 'preClose', 'volume', 'amount', 'suspendFlag']]
+    return data_pd
+
 def select_data(data_pd, adjustment_pd, symbol):
     data_pd = data_pd[data_pd['symbol'] == symbol]
     adjustment_pd = adjustment_pd[adjustment_pd['symbol'] == symbol]
@@ -80,20 +115,47 @@ def get_local_forward_daily_data(forward_file = DAILY_DIR / "forward" / "forward
     return data_pd
 
 
-def request_market_daily_online(json_data:Dict):
+def request_market_daily_online(symbol, max_timestamp):
     """在线获取日K行情数据"""
+    start_date = start_date = f"{(date.fromtimestamp(max_timestamp / 1000) + timedelta(1)).isoformat()} 00:00:00"
+     # 当日17点之前刷数
+    if datetime.now().hour > 17 :
+        end_date = f"{date.today().isoformat()} 00:00:00"
+    else:
+        end_date = f"{(date.today() - timedelta(1)).isoformat()} 00:00:00"
+    if start_date > end_date:
+        return
     json_data = {
-        **json_data,
+        "secret": SECRET,
+        "symbol": symbol,
+        "startTime": start_date,
+        "endTime": end_date,
         "frequency": "1d"
     }
     response = requests.post("https://api.geeksphere.online/admin-api/stock/market/get",json=json_data)
     if response.status_code == 200:
         datas = response.json()['data']
         return pd.DataFrame(datas)
-    return response
+    print(response)
 
-def request_market_adjustment_online(json_data):
+def request_market_adjustment_online(symbol, max_timestamp):
     """在线获取除权信息"""
+
+    start_date = start_date = f"{(date.fromtimestamp(max_timestamp / 1000) + timedelta(1)).isoformat()} 00:00:00"
+     # 当日17点之前刷数
+    if datetime.now().hour > 17 :
+        end_date = f"{date.today().isoformat()} 00:00:00"
+    else:
+        end_date = f"{(date.today() - timedelta(1)).isoformat()} 00:00:00"
+    if start_date > end_date:
+        return
+    json_data = {
+        "secret": SECRET,
+        "symbol": symbol,
+        "startTime": start_date,
+        "endTime": end_date,
+    }
+
     response = requests.post("https://api.geeksphere.online/admin-api/stock/info/adjustment", json=json_data)
     if response.status_code == 200:
         datas = response.json()['data']
@@ -120,36 +182,22 @@ def get_daily_data(symbol:str):
     local_adjustment_pd = get_local_adjustment_data()
     symbol = correct_symbol(symbol, local_daily_pd)
     local_symbol_daily_pd = local_daily_pd[local_daily_pd['symbol'] == symbol]
+    name = local_symbol_daily_pd['name'].iloc[0]
     local_symbol_adjustment_pd = local_adjustment_pd[local_adjustment_pd['symbol'] == symbol]
+
     
     if SECRET == "" or SECRET == "your_secret_key_here":
         return local_symbol_daily_pd, local_symbol_adjustment_pd
     
     # 2. 获取在线数据
-    # 2.1 构造请求参数
-    max_date = local_symbol_daily_pd['timestamp'].max()
-    start_date = start_date = f"{(date.fromtimestamp(max_date / 1000) + timedelta(1)).isoformat()} 00:00:00"
+    # 请求在线数据
+    max_timestamp = local_symbol_daily_pd['timestamp'].max()
+    online_symbol_daily_pd = get_data_from_ak(symbol=symbol, name=name,max_timestamp=max_timestamp)
+    if online_symbol_daily_pd is None or len(online_symbol_daily_pd) == 0:
+        online_symbol_daily_pd = request_market_daily_online(symbol,max_timestamp)
 
-    # 当日17点之前刷数
-    if datetime.now().hour > 17 :
-        end_date = f"{date.today().isoformat()} 00:00:00"
-    else:
-        end_date = f"{(date.today() - timedelta(1)).isoformat()} 00:00:00"
-
-    if start_date > end_date:
-        return local_symbol_daily_pd, local_symbol_adjustment_pd
-    
-    data = {
-        "secret": SECRET,
-        "symbol": symbol,
-        "startTime": start_date,
-        "endTime": end_date
-    }
-
-    # 2.2 请求在线数据：日K数据 和 除权数据
-    online_symbol_daily_pd = request_market_daily_online(data)
-    online_symbol_adjustment_pd = request_market_adjustment_online(data)
-
+    # 除权数据
+    online_symbol_adjustment_pd = request_market_adjustment_online(symbol, max_timestamp)
 
     # 3. 将在线数据保存到本地
     daily_pd = pd.concat([local_daily_pd, online_symbol_daily_pd])
