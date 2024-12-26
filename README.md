@@ -46,28 +46,27 @@ pip install -r requirements.txt
             export BY_QUANT_KEY="your_api_key_here"
             ```
         2. 保存文件后，运行 `source ~/.bash_profile` 、 `source ~/.bashrc` 或 `source ~/.zshrc`使更改生效。
-    - 或者将密钥写到utils/env.py 文件中：`SECRET = os.getenv("BY_QUANT_KEY",default="your_secret_key_here")`。使用密钥替换字符:your_secret_key_here
 
-
+    > 注意：可在notebook中测试环境变量是否设置成功
+    > ```python
+    > import os 
+    > os.getenv("BY_QUANT_KEY")
+    >```
+    > 如果上述代码没有输出密钥，需要重启电脑。【notebook无法刷新系统环境变量】
 ### 2.2 数据使用
 
 1. 获取原始日K数据
     ```python
     from utils import get_daily_data,get_local_daily_data,get_local_adjustment_data
 
-    local_daily_pd = get_local_daily_data()
-    local_adjustment_pd = get_local_adjustment_data()
-    data_pd, adjustment_pd = get_daily_data("002385", local_daily_pd, local_adjustment_pd)
+    data_pd, adjustment_pd = get_daily_data("002385")
 
     data_pd.tail(3)
     ```
 2. 获取前复权数据
     ```python
     from utils import get_forward_data,get_local_daily_data,get_local_adjustment_data
-
-    local_daily_pd = get_local_daily_data()
-    local_adjustment_pd = get_local_adjustment_data()
-    data_pd = get_forward_data("002385", local_daily_pd, local_adjustment_pd)
+    data_pd = get_forward_data("002385")
 
     data_pd.tail()
     ```
@@ -81,18 +80,15 @@ pip install -r requirements.txt
 示例：计算macd
 ```python
     from utils import get_forward_data,get_local_daily_data,get_local_adjustment_data
-    from indicator import macd
-    
-    local_daily_pd = get_local_daily_data()
-    local_adjustment_pd = get_local_adjustment_data()
-    data_pd = get_forward_data("002385", local_daily_pd, local_adjustment_pd)
+    from indicator import MACD,KDJ
 
+    data_pd = get_forward_data("002385")
     # 删除停牌数据
     data_pd = data_pd[data_pd['suspendFlag'] == 0]
     data_pd.drop(columns='suspendFlag', inplace=True)
-
-    data_pd = macd(data_pd)
-
+    # 常用指标
+    data_pd['diff'], data_pd['dea'], data_pd['macd'] = MACD(data_pd.close)
+    data_pd['kdj_k'], data_pd['kdj_d'], data_pd['kdj_j'] = KDJ(data_pd.close,data_pd.high, data_pd.low)
     data_pd.head()
 ```
  > 同通信达股票软件数据对比，确认一致。
@@ -100,46 +96,58 @@ pip install -r requirements.txt
 
 ## 4. 编写策略及回测
 ```python
-    from utils import get_forward_data,get_local_daily_data,get_local_adjustment_data
-    from indicator import macd,rsi
+    from utils import get_forward_data
+    from indicator import MACD, KDJ
     import pandas as pd
     import pybroker
     from pybroker import Strategy,StrategyConfig
-    import matplotlib.pyplot as plt
 
-    local_daily_pd = get_local_daily_data()
-    local_adjustment_pd = get_local_adjustment_data()
-    data_pd = get_forward_data("002385", local_daily_pd, local_adjustment_pd)
+
+    data_pd = get_forward_data("002385")
 
     # 删除停牌数据
     data_pd = data_pd[data_pd['suspendFlag'] == 0]
     data_pd.drop(columns='suspendFlag', inplace=True)
 
-    data_pd = macd(data_pd)
-    data_pd = rsi(data_pd)
+    data_pd['kdj_k'], data_pd['kdj_d'], data_pd['kdj_j'] = KDJ(data_pd.close,data_pd.high, data_pd.low)
 
-    data_pd['date'] = pd.to_datetime(data_pd['datetime'])
+    data_pd['date'] = pd.to_datetime(data_pd['datetime'],format='ISO8601')
 
     # 注册指标到pybroker
-    pybroker.register_columns('rsi')
+    pybroker.register_columns(["kdj_k","kdj_d","kdj_j"])
 
     # 初始化资金:50000元
     config = StrategyConfig(initial_cash=50000)
 
     strategy = Strategy(data_pd, '4/1/2021', '09/12/2024',config=config)
 
-
     # 定义策略
-    def buy_low_sell_high_rsi(ctx):
+    def kdj_over_boughtsold_strategy(ctx):
+        """策略:kdj超买超卖
+        当%K值大于80时，市场可能处于超买状态；当%K值小于20时，市场可能处于超卖状态。
+        
+        该策略缺点：k值可能很长时间没有超过80,导致持仓太久，硬扛亏损
+        """
+        if ctx.bars < 20:
+            return
+        
         pos = ctx.long_pos()
-        if not pos and ctx.rsi[-1] < 30:
-            ctx.buy_shares = 100
-        elif pos and ctx.rsi[-1] > 70:
+        k = ctx.kdj_k
+
+        # 超买超卖信号
+        overbought = k[-1] > 80
+        oversold = k[-1] < 20
+
+        # k 值大于80 抛空
+        if pos and overbought :
             ctx.sell_shares = pos.shares
+        # k值小于20 做多两成仓位
+        elif oversold:
+            ctx.buy_shares = ctx.calc_target_shares(0.2)
+
 
     # 注册策略到pybroker
     strategy.add_execution(buy_low_sell_high_rsi, ['002385.SZ'])
-
 
     # 回测
     result = strategy.backtest()

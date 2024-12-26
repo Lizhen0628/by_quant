@@ -1,3 +1,3 @@
 # 计算指标库
-from .trend import macd
-from .momentum import rsi
+from .trend import MACD
+from .momentum import KDJ

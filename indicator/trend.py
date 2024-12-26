@@ -2,10 +2,14 @@
 from pandas import DataFrame
 from ta.wrapper import MACD
 
+from utils.calculate import EMA, RD
 
-def macd(data_pd:DataFrame):
-    inst = MACD(data_pd['close'])
-    data_pd['macd'] = round(inst.macd_diff() * 2, 3)
-    data_pd['macd_dea'] = round(inst.macd_signal(), 3)
-    data_pd['macd_diff'] = round(inst.macd(), 3)
-    return data_pd
+
+def MACD(CLOSE,SHORT=12,LONG=26,M=9):
+    """
+    """      
+    # EMA的关系，S取120日，和雪球小数点2位相同
+    DIF = EMA(CLOSE,SHORT)-EMA(CLOSE,LONG);  
+    DEA = EMA(DIF,M);      
+    MACD=(DIF-DEA)*2
+    return RD(DIF),RD(DEA),RD(MACD)

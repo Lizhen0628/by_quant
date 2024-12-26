@@ -7,13 +7,13 @@ from typing import Dict
 from datetime import date,datetime,timedelta
 from pandas import DataFrame
 from .adjustment import process_forward
+from functools import lru_cache
 
 
 from .env import LOCAL_DAILY_FILE,DAILY_DIR, LOCAL_ADJUSTMENT_FILE,SECRET
 
 
-
-
+@lru_cache(maxsize=10) # 数据量比较大，缓存到内存中
 def get_local_daily_data(data_file = LOCAL_DAILY_FILE) -> DataFrame:
     """获取本地日K数据"""
     if data_file.exists():
@@ -38,6 +38,7 @@ def get_local_daily_data(data_file = LOCAL_DAILY_FILE) -> DataFrame:
     data_pd.to_csv(data_file,index=False)
     return data_pd
 
+@lru_cache(maxsize=10)
 def get_local_adjustment_data(data_file = LOCAL_ADJUSTMENT_FILE):
     """获取本地除权数据"""
     return pd.read_csv(LOCAL_ADJUSTMENT_FILE)
@@ -106,7 +107,7 @@ def correct_symbol(symbol, data_pd):
     return data_pd[data_pd['symbol'].str.contains(symbol)]['symbol'].unique()[0]
 
 
-def get_daily_data(symbol:str,local_daily_pd:DataFrame,local_adjustment_pd:DataFrame):
+def get_daily_data(symbol:str):
     """ 自动获取本地和在线数据 
         @param symbol: 股票代码【002385.SZ】
         @param local_daily_pd: 本地日K数据
@@ -115,28 +116,27 @@ def get_daily_data(symbol:str,local_daily_pd:DataFrame,local_adjustment_pd:DataF
     """
 
     # 1. 获取本地日K数据 和 除权数据
-    # local_daily_pd = get_local_daily_data()
-    # local_adjustment_pd = get_local_adjustment_data()
+    local_daily_pd = get_local_daily_data()
+    local_adjustment_pd = get_local_adjustment_data()
     symbol = correct_symbol(symbol, local_daily_pd)
     local_symbol_daily_pd = local_daily_pd[local_daily_pd['symbol'] == symbol]
     local_symbol_adjustment_pd = local_adjustment_pd[local_adjustment_pd['symbol'] == symbol]
     
     if SECRET == "" or SECRET == "your_secret_key_here":
         return local_symbol_daily_pd, local_symbol_adjustment_pd
-
+    
     # 2. 获取在线数据
     # 2.1 构造请求参数
     max_date = local_symbol_daily_pd['timestamp'].max()
     start_date = start_date = f"{(date.fromtimestamp(max_date / 1000) + timedelta(1)).isoformat()} 00:00:00"
 
     # 当日17点之前刷数
-    if datetime.now().hour > 17:
+    if datetime.now().hour > 17 :
         end_date = f"{date.today().isoformat()} 00:00:00"
     else:
         end_date = f"{(date.today() - timedelta(1)).isoformat()} 00:00:00"
 
-
-    if start_date >= end_date:
+    if start_date > end_date:
         return local_symbol_daily_pd, local_symbol_adjustment_pd
     
     data = {
@@ -161,10 +161,10 @@ def get_daily_data(symbol:str,local_daily_pd:DataFrame,local_adjustment_pd:DataF
     return pd.concat([local_symbol_daily_pd, online_symbol_daily_pd]), pd.concat([local_symbol_adjustment_pd, online_symbol_adjustment_pd])
 
 
-def get_forward_data(symbol:str,local_daily_pd:DataFrame,local_adjustment_pd:DataFrame):
+def get_forward_data(symbol:str):
     """获取前复权后到数据"""
     # 补全在线数据
-    daily_pd, adjustment_pd = get_daily_data(symbol,local_daily_pd,local_adjustment_pd)
+    daily_pd, adjustment_pd = get_daily_data(symbol)
     # 计算前复权价格
     forward_pd = process_forward(daily_pd, adjustment_pd)
     if 'preClose' in forward_pd.columns:
